@@ -1,14 +1,14 @@
 import logging
 import os
 import time
-import openai
+import requests
 from plexapi.server import PlexServer
 from utils.classes import UserInputs
 
 userInputs = UserInputs(
     plex_url=os.getenv("PLEX_URL"),
     plex_token=os.getenv("PLEX_TOKEN"),
-    openai_key=os.getenv("OPEN_AI_KEY"),
+    ollama_url=os.getenv("OLLAMA_URL"),  # Use Ollama URL instead of OpenAI key
     library_name=os.getenv("LIBRARY_NAME"),
     collection_title=os.getenv("COLLECTION_TITLE"),
     history_amount=int(os.getenv("HISTORY_AMOUNT")),
@@ -20,7 +20,20 @@ userInputs = UserInputs(
 logger = logging.getLogger()
 logging.basicConfig(level=logging.INFO)
 
-openai.api_key = userInputs.openai_key
+def query_ollama(query):
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "prompt": query,
+        "model": "gpt-3.5-turbo"  # Specify the model name used by Ollama
+    }
+    
+    try:
+        response = requests.post(userInputs.ollama_url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        logging.error(f"Ollama API error: {str(e)}")
+        return None
 
 def create_collection(plex, movie_items, description, library):
     logging.info("Finding matching movies in your library...")
@@ -67,8 +80,6 @@ def run():
             library = plex.library.section(userInputs.library_name)
             account_id = plex.systemAccounts()[1].accountID
 
-            # a = library.hubs()
-
             items_string = ""
             history_items_titles = []
             watch_history_items = plex.history(librarySectionID=library.key, maxresults=userInputs.history_amount, accountID=account_id)
@@ -92,18 +103,21 @@ def run():
             query += "Please give me the comma separated result, and then a short explanation separated from the movie values, separated by 3 pluses like '+++'."
             query += "Not a numbered list. "
 
-            # create a chat completion
-            logging.info("Querying openai for recommendations...")
-            chat_completion = openai.ChatCompletion.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": query}])
-            ai_result = chat_completion.choices[0].message.content
+            # Query the Ollama server
+            logging.info("Querying Ollama for recommendations...")
+            ai_result = query_ollama(query)
+            if ai_result is None:
+                logging.error("Was unable to query Ollama")
+                return
+
             ai_result_split = ai_result.split("+++")
             ai_movie_recommendations = ai_result_split[0]
             ai_movie_description = ai_result_split[1]
 
-            movie_items = list(filter(None,  ai_movie_recommendations.split(",")))
+            movie_items = list(filter(None, ai_movie_recommendations.split(",")))
             logging.info("Query success!")
         except:
-            logging.error('Was unable to query openai')
+            logging.error('Was unable to process the Ollama response')
             return
 
         if len(movie_items) > 0:
