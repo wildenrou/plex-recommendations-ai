@@ -23,7 +23,7 @@ logger = logging.getLogger()
 logging.basicConfig(level=logging.INFO)
 
 # Configure OpenAI to point to your local Ollama instance
-openai.api_base = "http://202.27.39.244:11434/v1"  # Replace with your Ollama server's IP and port
+openai.api_base = "http://localhost:11434/v1"  # Replace with your Ollama server's IP and port
 openai.api_key = userInputs.openai_key  # The key is required by the OpenAI client but not used by Ollama
 
 import re
